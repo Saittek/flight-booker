@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "bagmatch",
+  "name": "flight-booker",
   "main": ".open-next/worker.js",
   "compatibility_date": "2025-03-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -11,21 +11,21 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "bagmatch"
+      "service": "flight-booker"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "BOOKINGS_KV",
-      "id": "REPLACE_WITH_KV_NAMESPACE_ID",
-      "preview_id": "REPLACE_WITH_KV_PREVIEW_ID"
+      "id": "1c2873691f8147609a655bf075749d2d",
+      "preview_id": "68e4a760bceb4e45be60411e1f0ceed4"
     }
   ],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "bagmatch-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "609437ed-1214-4fc8-8ec3-050ec5c7b9a1"
     }
   ],
   "images": {
