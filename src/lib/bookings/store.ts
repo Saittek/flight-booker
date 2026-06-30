@@ -19,6 +19,7 @@ export interface BookingResult {
 
 export interface PendingBookingRecord {
   id: string;
+  userId?: string;
   paymentIntentId?: string;
   status: PendingBookingStatus;
   pricedOffer: Record<string, unknown>;
@@ -103,6 +104,7 @@ async function kvSaveBooking(record: PendingBookingRecord, kv: KVNamespace): Pro
 }
 
 export async function createPendingBooking(input: {
+  userId?: string;
   pricedOffer: Record<string, unknown>;
   travelers: TravelerInput[];
   expectedTotal: number;
@@ -112,6 +114,7 @@ export async function createPendingBooking(input: {
   const now = new Date().toISOString();
   const record: PendingBookingRecord = {
     id: randomUUID(),
+    userId: input.userId,
     status: "pending",
     pricedOffer: input.pricedOffer,
     travelers: input.travelers,

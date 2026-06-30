@@ -7,6 +7,7 @@ import { AirlineBaggagePanel } from "@/components/AirlineBaggagePanel";
 import { StripePaymentSection } from "@/components/StripePaymentSection";
 import { getAirportByCode } from "@/lib/airports";
 import { loadSearch, loadSelectedOffer, saveBookingConfirmation } from "@/lib/offer-storage";
+import { profileToTraveler, saveTicketToAccount } from "@/lib/account-client";
 import type { BookingResult } from "@/lib/bookings/store";
 import type { FlightOffer, SearchCriteria, TravelerForm } from "@/types";
 import { CABIN_CLASS_LABELS, formatMoney } from "@/types";
@@ -43,7 +44,18 @@ export default function CheckoutPage() {
     }
     setOffer(selected);
     setCriteria(search);
-    setTravelers(Array.from({ length: search.passengers }, () => emptyTraveler()));
+
+    const initial = Array.from({ length: search.passengers }, () => emptyTraveler());
+
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.user?.profile) {
+          initial[0] = { ...initial[0], ...profileToTraveler(d.user.profile) };
+        }
+        setTravelers(initial);
+      })
+      .catch(() => setTravelers(initial));
 
     fetch("/api/payments/create-intent", { method: "GET" })
       .then((r) => r.json())
@@ -95,8 +107,14 @@ export default function CheckoutPage() {
     setTravelers((prev) => prev.map((t, i) => (i === index ? { ...t, ...patch } : t)));
   }
 
+  async function finishBooking(confirmation: Parameters<typeof saveBookingConfirmation>[0]) {
+    saveBookingConfirmation(confirmation);
+    await saveTicketToAccount(confirmation as import("@/types").BookingConfirmation, travelers);
+    router.push("/confirmation");
+  }
+
   function handlePaymentSuccess(result: BookingResult) {
-    saveBookingConfirmation({
+    void finishBooking({
       orderId: result.orderId,
       bookingReference: result.bookingReference,
       airline: displayOffer!.airline,
@@ -108,7 +126,6 @@ export default function CheckoutPage() {
       paymentIntentId: result.paymentIntentId,
       stripeReceiptUrl: result.stripeReceiptUrl,
     });
-    router.push("/confirmation");
   }
 
   async function completeBooking() {
@@ -119,7 +136,7 @@ export default function CheckoutPage() {
 
     try {
       if (displayOffer.source === "mock") {
-        saveBookingConfirmation({
+        await finishBooking({
           orderId: `DEMO-${Date.now()}`,
           bookingReference: "BAGMATCH-DEMO",
           airline: displayOffer.airline,
@@ -130,7 +147,6 @@ export default function CheckoutPage() {
           departTime: displayOffer.departTime,
           demo: true,
         });
-        router.push("/confirmation");
         return;
       }
 
@@ -164,7 +180,7 @@ export default function CheckoutPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Booking failed");
 
-      saveBookingConfirmation({
+      await finishBooking({
         orderId: data.orderId,
         bookingReference: data.bookingReference,
         airline: displayOffer.airline,
@@ -176,7 +192,6 @@ export default function CheckoutPage() {
         paymentIntentId: data.paymentIntentId,
         stripeReceiptUrl: data.stripeReceiptUrl,
       });
-      router.push("/confirmation");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Booking failed.");
     } finally {

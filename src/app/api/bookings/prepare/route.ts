@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createPendingBooking, pruneExpiredBookings } from "@/lib/bookings/store";
+import { getCurrentUser } from "@/lib/auth/session";
 import type { TravelerInput } from "@/lib/amadeus/client";
 
 export async function POST(request: Request) {
@@ -36,7 +37,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Expected total and currency required." }, { status: 400 });
     }
 
+    const user = await getCurrentUser();
+
     const record = await createPendingBooking({
+      userId: user?.id,
       pricedOffer: body.pricedOffer,
       travelers: body.travelers,
       expectedTotal: body.expectedTotal,

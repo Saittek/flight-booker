@@ -5,6 +5,7 @@ import {
   type BookingResult,
   type PendingBookingRecord,
 } from "@/lib/bookings/store";
+import { persistTicketForUser } from "@/lib/bookings/save-user-ticket";
 import { fromStripeAmount, toStripeAmount } from "@/lib/stripe/server";
 import type Stripe from "stripe";
 
@@ -62,6 +63,11 @@ export async function fulfillPendingBooking(
     };
 
     await updatePendingBooking(pendingBookingId, { status: "completed", result });
+
+    if (pending.userId) {
+      await persistTicketForUser(pending.userId, pending, result);
+    }
+
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Booking failed.";
