@@ -211,7 +211,7 @@ export async function pruneExpiredBookings(): Promise<void> {
   if (kv) {
     const list = await kv.list({ prefix: BOOKING_PREFIX });
     await Promise.all(
-      list.keys.map(async (key) => {
+      list.keys.map(async (key: { name: string }) => {
         const raw = await kv.get(key.name);
         if (!raw) return;
         const record = JSON.parse(raw) as PendingBookingRecord;
