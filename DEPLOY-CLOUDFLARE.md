@@ -62,7 +62,7 @@ For local preview, copy `.dev.vars.example` to `.dev.vars` and fill in all value
 
 | Step | Command |
 |------|---------|
-| Build | `npm run build:cloudflare` |
+| Build | `npm run build` |
 | Deploy | `npx wrangler deploy` |
 
 ### Option B — Manual from your machine
@@ -93,7 +93,7 @@ Uses KV preview namespace and local D1 from `wrangler.jsonc`.
 
 | Issue | Fix |
 |-------|-----|
-| `Could not find compiled Open Next config` | Build must run `npm run build:cloudflare` (not `next build` alone) |
+| `Could not find compiled Open Next config` | Build must run `npm run build` (OpenNext bundle), not `next build` alone |
 | `BOOKINGS_KV binding is not configured` | Create KV namespace and update `wrangler.jsonc` |
 | `DB binding is not configured` | Create D1 database, update `wrangler.jsonc`, run `npm run d1:migrate` |
 | Auth fails on Workers | Ensure D1 is provisioned and schema migrated |
