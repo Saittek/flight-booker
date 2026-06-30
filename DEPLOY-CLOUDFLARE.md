@@ -98,13 +98,18 @@ Uses the KV preview namespace from `wrangler.jsonc`.
 
 1. Push the repo to GitHub
 2. In Cloudflare: **Workers & Pages** → **Create** → **Connect to Git**
-3. Select the repo, set build command to `npm run deploy`, or use Cloudflare's OpenNext template settings
+3. Use these commands in the build settings:
+   - **Build command:** `npm run build` (runs `opennextjs-cloudflare build`)
+   - **Deploy command:** `npx wrangler deploy`
 4. Add environment variables / secrets in the dashboard
+
+Or use a single step: **Build command** `npm run deploy` and leave deploy command empty.
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
+| `Could not find compiled Open Next config` | Build must run `opennextjs-cloudflare build`, not plain `next build` |
 | `You are not authenticated` | Run `npx wrangler login` |
 | Booking not found after payment | Ensure KV namespace IDs are set in `wrangler.jsonc` |
 | Stripe webhook 400 | Check `STRIPE_WEBHOOK_SECRET` matches the dashboard endpoint |
