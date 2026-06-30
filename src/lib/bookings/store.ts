@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { canUseLocalFileStore, getBookingsKv } from "@/lib/cloudflare/env";
 import type { TravelerInput } from "@/lib/amadeus/client";
 
 export type PendingBookingStatus =
@@ -45,22 +45,21 @@ interface StoreFile {
 const BOOKING_PREFIX = "booking:";
 const PI_PREFIX = "pi:";
 const TTL_SECONDS = 48 * 60 * 60;
+const LOCAL_STORE_PATH = "data/pending-bookings.json";
 
-async function getKv(): Promise<KVNamespace | null> {
-  try {
-    const { getCloudflareContext } = await import("@opennextjs/cloudflare");
-    const { env } = await getCloudflareContext({ async: true });
-    return (env as CloudflareEnv).BOOKINGS_KV ?? null;
-  } catch {
-    return null;
-  }
+function newId(): string {
+  return crypto.randomUUID();
 }
 
 async function readFileStore(): Promise<StoreFile> {
+  if (!canUseLocalFileStore()) {
+    throw new Error("BOOKINGS_KV binding is not configured.");
+  }
+
   const fs = await import("fs");
   const path = await import("path");
   const dataDir = path.join(process.cwd(), "data");
-  const storePath = path.join(dataDir, "pending-bookings.json");
+  const storePath = path.join(process.cwd(), LOCAL_STORE_PATH);
 
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -76,10 +75,14 @@ async function readFileStore(): Promise<StoreFile> {
 }
 
 async function writeFileStore(store: StoreFile): Promise<void> {
+  if (!canUseLocalFileStore()) {
+    throw new Error("BOOKINGS_KV binding is not configured.");
+  }
+
   const fs = await import("fs");
   const path = await import("path");
   const dataDir = path.join(process.cwd(), "data");
-  const storePath = path.join(dataDir, "pending-bookings.json");
+  const storePath = path.join(process.cwd(), LOCAL_STORE_PATH);
 
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -113,7 +116,7 @@ export async function createPendingBooking(input: {
 }): Promise<PendingBookingRecord> {
   const now = new Date().toISOString();
   const record: PendingBookingRecord = {
-    id: randomUUID(),
+    id: newId(),
     userId: input.userId,
     status: "pending",
     pricedOffer: input.pricedOffer,
@@ -125,10 +128,14 @@ export async function createPendingBooking(input: {
     updatedAt: now,
   };
 
-  const kv = await getKv();
+  const kv = await getBookingsKv();
   if (kv) {
     await kvSaveBooking(record, kv);
     return record;
+  }
+
+  if (!canUseLocalFileStore()) {
+    throw new Error("BOOKINGS_KV binding is not configured.");
   }
 
   const store = await readFileStore();
@@ -138,9 +145,13 @@ export async function createPendingBooking(input: {
 }
 
 export async function getPendingBooking(id: string): Promise<PendingBookingRecord | null> {
-  const kv = await getKv();
+  const kv = await getBookingsKv();
   if (kv) {
     return kvGetBooking(id, kv);
+  }
+
+  if (!canUseLocalFileStore()) {
+    throw new Error("BOOKINGS_KV binding is not configured.");
   }
 
   const store = await readFileStore();
@@ -150,11 +161,15 @@ export async function getPendingBooking(id: string): Promise<PendingBookingRecor
 export async function getPendingBookingByPaymentIntent(
   paymentIntentId: string,
 ): Promise<PendingBookingRecord | null> {
-  const kv = await getKv();
+  const kv = await getBookingsKv();
   if (kv) {
     const bookingId = await kv.get(`${PI_PREFIX}${paymentIntentId}`);
     if (!bookingId) return null;
     return kvGetBooking(bookingId, kv);
+  }
+
+  if (!canUseLocalFileStore()) {
+    throw new Error("BOOKINGS_KV binding is not configured.");
   }
 
   const store = await readFileStore();
@@ -170,7 +185,7 @@ export async function updatePendingBooking(
     >
   >,
 ): Promise<PendingBookingRecord | null> {
-  const kv = await getKv();
+  const kv = await getBookingsKv();
   if (kv) {
     const existing = await kvGetBooking(id, kv);
     if (!existing) return null;
@@ -182,6 +197,10 @@ export async function updatePendingBooking(
     };
     await kvSaveBooking(updated, kv);
     return updated;
+  }
+
+  if (!canUseLocalFileStore()) {
+    throw new Error("BOOKINGS_KV binding is not configured.");
   }
 
   const store = await readFileStore();
@@ -206,7 +225,7 @@ export async function linkPaymentIntent(
 
 export async function pruneExpiredBookings(): Promise<void> {
   const cutoff = Date.now() - TTL_SECONDS * 1000;
-  const kv = await getKv();
+  const kv = await getBookingsKv();
 
   if (kv) {
     const list = await kv.list({ prefix: BOOKING_PREFIX });
@@ -226,6 +245,10 @@ export async function pruneExpiredBookings(): Promise<void> {
         }
       }),
     );
+    return;
+  }
+
+  if (!canUseLocalFileStore()) {
     return;
   }
 

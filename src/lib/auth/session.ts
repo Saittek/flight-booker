@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth/constants";
-import {
+import { useSecureCookies } from "@/lib/cloudflare/env";
+import { SESSION_COOKIE } from "@/lib/auth/constants";import {
   createSession,
   deleteSession,
   getSessionUser,
@@ -19,7 +19,7 @@ export function setSessionCookie(response: NextResponse, sessionId: string, expi
   response.cookies.set(SESSION_COOKIE, sessionId, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: useSecureCookies(),
     path: "/",
     expires: new Date(expiresAt),
   });
@@ -29,7 +29,7 @@ export function clearSessionCookie(response: NextResponse): void {
   response.cookies.set(SESSION_COOKIE, "", {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: useSecureCookies(),
     path: "/",
     maxAge: 0,
   });

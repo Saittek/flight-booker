@@ -1,0 +1,10 @@
+# Copy to .dev.vars for local Workers preview (npm run preview)
+NEXTJS_ENV=development
+
+AMADEUS_CLIENT_ID=
+AMADEUS_CLIENT_SECRET=
+AMADEUS_HOSTNAME=test
+
+STRIPE_SECRET_KEY=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+STRIPE_WEBHOOK_SECRET=

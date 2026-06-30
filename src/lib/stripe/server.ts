@@ -11,7 +11,9 @@ export function getStripe(): Stripe {
     throw new Error("STRIPE_SECRET_KEY is not configured.");
   }
   if (!stripe) {
-    stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      httpClient: Stripe.createFetchHttpClient(),
+    });
   }
   return stripe;
 }

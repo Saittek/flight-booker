@@ -1,6 +1,8 @@
-import fs from "fs";
-import path from "path";
-import { randomUUID } from "crypto";
+import {
+  canUseLocalFileStore,
+  getAccountsDb,
+} from "@/lib/cloudflare/env";
+import { ensureD1Schema } from "@/lib/db/schema-embedded";
 import type {
   AuthUser,
   ProfileUpdateInput,
@@ -10,8 +12,6 @@ import type {
   UserTicket,
 } from "@/types/auth";
 import { SESSION_TTL_MS } from "@/lib/auth/constants";
-
-const SCHEMA_PATH = path.join(process.cwd(), "src/lib/db/schema.sql");
 
 interface UserRow {
   id: string;
@@ -64,17 +64,10 @@ interface FileStore {
   tickets: TicketRow[];
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const STORE_PATH = path.join(DATA_DIR, "accounts.json");
+const LOCAL_STORE_PATH = "data/accounts.json";
 
-async function getD1(): Promise<D1Database | null> {
-  try {
-    const { getCloudflareContext } = await import("@opennextjs/cloudflare");
-    const { env } = await getCloudflareContext({ async: true });
-    return (env as CloudflareEnv).DB ?? null;
-  } catch {
-    return null;
-  }
+function newId(): string {
+  return crypto.randomUUID();
 }
 
 function rowToProfile(row: ProfileRow): UserProfile {
@@ -110,34 +103,41 @@ function rowToTicket(row: TicketRow): UserTicket {
   };
 }
 
-async function ensureD1Schema(db: D1Database): Promise<void> {
-  const schema = fs.readFileSync(SCHEMA_PATH, "utf-8");
-  const statements = schema
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  for (const sql of statements) {
-    await db.prepare(sql).run();
+async function readFileStore(): Promise<FileStore> {
+  if (!canUseLocalFileStore()) {
+    throw new Error("DB binding is not configured.");
   }
-}
 
-function readFileStore(): FileStore {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  const fs = await import("fs");
+  const path = await import("path");
+  const dataDir = path.join(process.cwd(), "data");
+  const storePath = path.join(process.cwd(), LOCAL_STORE_PATH);
+
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
   }
-  if (!fs.existsSync(STORE_PATH)) {
+  if (!fs.existsSync(storePath)) {
     const empty: FileStore = { users: [], profiles: [], sessions: [], tickets: [] };
-    fs.writeFileSync(STORE_PATH, JSON.stringify(empty, null, 2));
+    fs.writeFileSync(storePath, JSON.stringify(empty, null, 2));
     return empty;
   }
-  return JSON.parse(fs.readFileSync(STORE_PATH, "utf-8")) as FileStore;
+  return JSON.parse(fs.readFileSync(storePath, "utf-8")) as FileStore;
 }
 
-function writeFileStore(store: FileStore): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+async function writeFileStore(store: FileStore): Promise<void> {
+  if (!canUseLocalFileStore()) {
+    throw new Error("DB binding is not configured.");
   }
-  fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2));
+
+  const fs = await import("fs");
+  const path = await import("path");
+  const dataDir = path.join(process.cwd(), "data");
+  const storePath = path.join(process.cwd(), LOCAL_STORE_PATH);
+
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  fs.writeFileSync(storePath, JSON.stringify(store, null, 2));
 }
 
 function normalizeEmail(email: string): string {
@@ -146,7 +146,7 @@ function normalizeEmail(email: string): string {
 
 export async function findUserByEmail(email: string): Promise<(UserRow & { profile: ProfileRow }) | null> {
   const normalized = normalizeEmail(email);
-  const db = await getD1();
+  const db = await getAccountsDb();
 
   if (db) {
     await ensureD1Schema(db);
@@ -163,7 +163,11 @@ export async function findUserByEmail(email: string): Promise<(UserRow & { profi
     return { ...user, profile };
   }
 
-  const store = readFileStore();
+  if (!canUseLocalFileStore()) {
+    throw new Error("DB binding is not configured.");
+  }
+
+  const store = await readFileStore();
   const user = store.users.find((u) => u.email === normalized);
   if (!user) return null;
   const profile = store.profiles.find((p) => p.user_id === user.id);
@@ -172,7 +176,7 @@ export async function findUserByEmail(email: string): Promise<(UserRow & { profi
 }
 
 export async function findUserById(userId: string): Promise<AuthUser | null> {
-  const db = await getD1();
+  const db = await getAccountsDb();
 
   if (db) {
     await ensureD1Schema(db);
@@ -190,7 +194,11 @@ export async function findUserById(userId: string): Promise<AuthUser | null> {
     };
   }
 
-  const store = readFileStore();
+  if (!canUseLocalFileStore()) {
+    throw new Error("DB binding is not configured.");
+  }
+
+  const store = await readFileStore();
   const user = store.users.find((u) => u.id === userId);
   if (!user) return null;
   const profile = store.profiles.find((p) => p.user_id === userId);
@@ -208,8 +216,8 @@ export async function createUser(
 ): Promise<AuthUser> {
   const normalized = normalizeEmail(input.email);
   const now = new Date().toISOString();
-  const userId = randomUUID();
-  const db = await getD1();
+  const userId = newId();
+  const db = await getAccountsDb();
 
   if (db) {
     await ensureD1Schema(db);
@@ -250,7 +258,11 @@ export async function createUser(
     return user;
   }
 
-  const store = readFileStore();
+  if (!canUseLocalFileStore()) {
+    throw new Error("DB binding is not configured.");
+  }
+
+  const store = await readFileStore();
   if (store.users.some((u) => u.email === normalized)) {
     throw new Error("An account with this email already exists.");
   }
@@ -273,7 +285,7 @@ export async function createUser(
     country_calling_code: input.countryCallingCode?.trim() ?? "1",
     updated_at: now,
   });
-  writeFileStore(store);
+  await writeFileStore(store);
 
   const user = await findUserById(userId);
   if (!user) throw new Error("Failed to create account.");
@@ -286,11 +298,11 @@ export async function getPasswordHash(email: string): Promise<string | null> {
 }
 
 export async function createSession(userId: string): Promise<{ id: string; expiresAt: string }> {
-  const id = randomUUID();
+  const id = newId();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + SESSION_TTL_MS).toISOString();
   const createdAt = now.toISOString();
-  const db = await getD1();
+  const db = await getAccountsDb();
 
   if (db) {
     await ensureD1Schema(db);
@@ -301,14 +313,18 @@ export async function createSession(userId: string): Promise<{ id: string; expir
     return { id, expiresAt };
   }
 
-  const store = readFileStore();
+  if (!canUseLocalFileStore()) {
+    throw new Error("DB binding is not configured.");
+  }
+
+  const store = await readFileStore();
   store.sessions.push({ id, user_id: userId, expires_at: expiresAt, created_at: createdAt });
-  writeFileStore(store);
+  await writeFileStore(store);
   return { id, expiresAt };
 }
 
 export async function getSessionUser(sessionId: string): Promise<AuthUser | null> {
-  const db = await getD1();
+  const db = await getAccountsDb();
 
   if (db) {
     await ensureD1Schema(db);
@@ -324,28 +340,36 @@ export async function getSessionUser(sessionId: string): Promise<AuthUser | null
     return findUserById(session.user_id);
   }
 
-  const store = readFileStore();
+  if (!canUseLocalFileStore()) {
+    throw new Error("DB binding is not configured.");
+  }
+
+  const store = await readFileStore();
   const session = store.sessions.find((s) => s.id === sessionId);
   if (!session) return null;
   if (new Date(session.expires_at).getTime() <= Date.now()) {
     store.sessions = store.sessions.filter((s) => s.id !== sessionId);
-    writeFileStore(store);
+    await writeFileStore(store);
     return null;
   }
   return findUserById(session.user_id);
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  const db = await getD1();
+  const db = await getAccountsDb();
 
   if (db) {
     await db.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId).run();
     return;
   }
 
-  const store = readFileStore();
+  if (!canUseLocalFileStore()) {
+    throw new Error("DB binding is not configured.");
+  }
+
+  const store = await readFileStore();
   store.sessions = store.sessions.filter((s) => s.id !== sessionId);
-  writeFileStore(store);
+  await writeFileStore(store);
 }
 
 export async function updateUserProfile(
@@ -353,7 +377,7 @@ export async function updateUserProfile(
   patch: ProfileUpdateInput,
 ): Promise<UserProfile> {
   const now = new Date().toISOString();
-  const db = await getD1();
+  const db = await getAccountsDb();
 
   if (db) {
     await ensureD1Schema(db);
@@ -387,7 +411,11 @@ export async function updateUserProfile(
     return user.profile;
   }
 
-  const store = readFileStore();
+  if (!canUseLocalFileStore()) {
+    throw new Error("DB binding is not configured.");
+  }
+
+  const store = await readFileStore();
   const index = store.profiles.findIndex((p) => p.user_id === userId);
   if (index === -1) throw new Error("Profile not found.");
 
@@ -402,12 +430,12 @@ export async function updateUserProfile(
       patch.countryCallingCode?.trim() ?? store.profiles[index].country_calling_code,
     updated_at: now,
   };
-  writeFileStore(store);
+  await writeFileStore(store);
   return rowToProfile(store.profiles[index]);
 }
 
 export async function saveUserTicket(input: SaveTicketInput): Promise<UserTicket> {
-  const db = await getD1();
+  const db = await getAccountsDb();
 
   if (db) {
     await ensureD1Schema(db);
@@ -416,15 +444,17 @@ export async function saveUserTicket(input: SaveTicketInput): Promise<UserTicket
       .bind(input.userId, input.orderId)
       .first<TicketRow>();
     if (existing) return rowToTicket(existing);
-  } else {
-    const store = readFileStore();
+  } else if (canUseLocalFileStore()) {
+    const store = await readFileStore();
     const existing = store.tickets.find(
       (t) => t.user_id === input.userId && t.order_id === input.orderId,
     );
     if (existing) return rowToTicket(existing);
+  } else {
+    throw new Error("DB binding is not configured.");
   }
 
-  const id = randomUUID();
+  const id = newId();
   const now = new Date().toISOString();
   const travelersJson = JSON.stringify(input.travelers);
 
@@ -472,7 +502,7 @@ export async function saveUserTicket(input: SaveTicketInput): Promise<UserTicket
     };
   }
 
-  const store = readFileStore();
+  const store = await readFileStore();
   const row: TicketRow = {
     id,
     user_id: input.userId,
@@ -490,12 +520,12 @@ export async function saveUserTicket(input: SaveTicketInput): Promise<UserTicket
     created_at: now,
   };
   store.tickets.unshift(row);
-  writeFileStore(store);
+  await writeFileStore(store);
   return rowToTicket(row);
 }
 
 export async function listUserTickets(userId: string): Promise<UserTicket[]> {
-  const db = await getD1();
+  const db = await getAccountsDb();
 
   if (db) {
     await ensureD1Schema(db);
@@ -508,7 +538,11 @@ export async function listUserTickets(userId: string): Promise<UserTicket[]> {
     return (results ?? []).map(rowToTicket);
   }
 
-  const store = readFileStore();
+  if (!canUseLocalFileStore()) {
+    throw new Error("DB binding is not configured.");
+  }
+
+  const store = await readFileStore();
   return store.tickets
     .filter((t) => t.user_id === userId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at))

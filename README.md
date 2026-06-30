@@ -87,6 +87,10 @@ Without API keys, the app falls back to **demo data** so you can still test the 
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Development server |
-| `npm run build` | Production build |
-| `npm start` | Production server |
+| `npm run dev` | Development server (port 3001) |
+| `npm run build` | Next.js production build |
+| `npm run build:cloudflare` | OpenNext bundle for Cloudflare Workers |
+| `npm run preview` | Build + local Workers preview |
+| `npm run deploy` | Build + deploy to Cloudflare |
+
+See [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md) for KV, D1, secrets, and CI setup.

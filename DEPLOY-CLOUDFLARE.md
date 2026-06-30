@@ -15,102 +15,87 @@ cd C:\Users\yello\Projects\flight-booker
 npx wrangler login
 ```
 
-This opens a browser window to authorize Wrangler.
-
-## 2. Create a KV namespace for pending bookings
-
-Stripe webhooks store booking state in **Cloudflare KV** (Workers cannot write to the local filesystem).
+## 2. Create KV namespace (pending bookings)
 
 ```powershell
 npx wrangler kv namespace create BOOKINGS_KV
 npx wrangler kv namespace create BOOKINGS_KV --preview
 ```
 
-Copy the returned IDs into `wrangler.jsonc`:
+Copy the IDs into `wrangler.jsonc` under `kv_namespaces`.
 
-```jsonc
-"kv_namespaces": [
-  {
-    "binding": "BOOKINGS_KV",
-    "id": "<production id>",
-    "preview_id": "<preview id>"
-  }
-]
+## 3. Create D1 database (user accounts & tickets)
+
+```powershell
+npx wrangler d1 create bagmatch-db
 ```
 
-## 3. Set production secrets
+Copy the `database_id` into `wrangler.jsonc` under `d1_databases`, then run migrations:
 
-Add your API keys as Worker secrets (not committed to git):
+```powershell
+npm run d1:migrate
+```
+
+For local preview: `npm run d1:migrate:local`
+
+## 4. Set secrets
+
+Runtime secrets (Wrangler dashboard or CLI):
 
 ```powershell
 npx wrangler secret put AMADEUS_CLIENT_ID
 npx wrangler secret put AMADEUS_CLIENT_SECRET
 npx wrangler secret put AMADEUS_HOSTNAME
 npx wrangler secret put STRIPE_SECRET_KEY
-npx wrangler secret put NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 npx wrangler secret put STRIPE_WEBHOOK_SECRET
 ```
 
-For local preview with bindings, copy `.env.local` values into `.dev.vars` (same keys as `.env.example`).
+**Build-time variable** (Cloudflare dashboard → Settings → Environment variables):
 
-## 4. Deploy
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` — required at build for checkout UI
+
+For local preview, copy `.dev.vars.example` to `.dev.vars` and fill in all values.
+
+## 5. Deploy
+
+### Option A — Cloudflare Git integration (recommended)
+
+| Step | Command |
+|------|---------|
+| Build | `npm run build:cloudflare` |
+| Deploy | `npx wrangler deploy` |
+
+### Option B — Manual from your machine
 
 ```powershell
 npm run deploy
 ```
 
-Wrangler prints your Workers URL, e.g. `https://bagmatch.<your-subdomain>.workers.dev`.
+## 6. Connect your custom domain
 
-## 5. Connect your custom domain
+Cloudflare dashboard → **Workers & Pages** → **bagmatch** → **Settings** → **Domains & Routes** → **Add Custom Domain**
 
-In the [Cloudflare dashboard](https://dash.cloudflare.com):
+## 7. Stripe webhook (production)
 
-1. **Workers & Pages** → select **bagmatch**
-2. **Settings** → **Domains & Routes** → **Add Custom Domain**
-3. Enter your domain (e.g. `bagmatch.example.com` or your root domain)
+Add endpoint: `https://your-domain.com/api/webhooks/stripe`
 
-If the domain is already on Cloudflare, DNS is configured automatically.
+Events: `payment_intent.succeeded`, `payment_intent.payment_failed`
 
-## 6. Stripe webhook (production)
-
-In [Stripe Dashboard → Webhooks](https://dashboard.stripe.com/webhooks), add:
-
-```
-https://your-domain.com/api/webhooks/stripe
-```
-
-Events:
-
-- `payment_intent.succeeded`
-- `payment_intent.payment_failed`
-
-Use the signing secret as `STRIPE_WEBHOOK_SECRET`.
-
-## 7. Preview locally (Workers runtime)
+## Local Workers preview
 
 ```powershell
 npm run preview
 ```
 
-Uses the KV preview namespace from `wrangler.jsonc`.
-
-## GitHub continuous deployment (optional)
-
-1. Push the repo to GitHub
-2. In Cloudflare: **Workers & Pages** → **Create** → **Connect to Git**
-3. Use these commands in the build settings:
-   - **Build command:** `npm run build` (runs `opennextjs-cloudflare build`)
-   - **Deploy command:** `npx wrangler deploy`
-4. Add environment variables / secrets in the dashboard
-
-Or use a single step: **Build command** `npm run deploy` and leave deploy command empty.
+Uses KV preview namespace and local D1 from `wrangler.jsonc`.
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| `Could not find compiled Open Next config` | Build must run `opennextjs-cloudflare build`, not plain `next build` |
-| `You are not authenticated` | Run `npx wrangler login` |
-| Booking not found after payment | Ensure KV namespace IDs are set in `wrangler.jsonc` |
-| Stripe webhook 400 | Check `STRIPE_WEBHOOK_SECRET` matches the dashboard endpoint |
-| Amadeus 401 | Verify secrets with `npx wrangler secret list` |
+| `Could not find compiled Open Next config` | Build must run `npm run build:cloudflare` (not `next build` alone) |
+| `BOOKINGS_KV binding is not configured` | Create KV namespace and update `wrangler.jsonc` |
+| `DB binding is not configured` | Create D1 database, update `wrangler.jsonc`, run `npm run d1:migrate` |
+| Auth fails on Workers | Ensure D1 is provisioned and schema migrated |
+| Stripe fails on Workers | Set secrets; use fetch client (already configured) |
+| Amadeus fails | Set `AMADEUS_*` secrets; uses fetch API (Workers-compatible) |
