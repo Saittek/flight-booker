@@ -1,33 +1,53 @@
 const ITERATIONS = 100_000;
 const KEY_LENGTH = 32;
 
+/** Copy into an ArrayBuffer-backed Uint8Array for Web Crypto typings. */
+function copyBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(bytes.length);
+  out.set(bytes);
+  return out;
+}
+
 function toBase64(bytes: Uint8Array): string {
-  return Buffer.from(bytes).toString("base64");
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
 }
 
-function fromBase64(b64: string): Uint8Array {
-  return new Uint8Array(Buffer.from(b64, "base64"));
+function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
-async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array> {
-  const encoder = new TextEncoder();
+async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+  const passwordBytes = copyBytes(new TextEncoder().encode(password));
+  const saltBytes = copyBytes(salt);
+
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(password),
+    passwordBytes,
     "PBKDF2",
     false,
     ["deriveBits"],
   );
+
   const hash = await crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
-      salt,
+      salt: saltBytes,
       iterations: ITERATIONS,
       hash: "SHA-256",
     },
     keyMaterial,
     KEY_LENGTH * 8,
   );
+
   return new Uint8Array(hash);
 }
 
@@ -51,7 +71,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   if (actual.length !== expected.length) return false;
   let diff = 0;
   for (let i = 0; i < actual.length; i++) {
-    diff |= actual[i] ^ expected[i];
+    diff |= actual[i]! ^ expected[i]!;
   }
   return diff === 0;
 }
