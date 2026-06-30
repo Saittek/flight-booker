@@ -4,7 +4,7 @@ import type { TravelerInput } from "@/lib/amadeus/client";
 
 export async function POST(request: Request) {
   try {
-    pruneExpiredBookings();
+    await pruneExpiredBookings();
 
     const body = (await request.json()) as {
       pricedOffer: Record<string, unknown>;
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Expected total and currency required." }, { status: 400 });
     }
 
-    const record = createPendingBooking({
+    const record = await createPendingBooking({
       pricedOffer: body.pricedOffer,
       travelers: body.travelers,
       expectedTotal: body.expectedTotal,

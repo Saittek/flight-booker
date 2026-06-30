@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     };
 
     if (body.paymentIntentId) {
-      const existing = getPendingBookingByPaymentIntent(body.paymentIntentId);
+      const existing = await getPendingBookingByPaymentIntent(body.paymentIntentId);
       if (existing?.status === "completed" && existing.result) {
         return NextResponse.json(existing.result);
       }

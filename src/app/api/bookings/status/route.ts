@@ -10,8 +10,8 @@ export async function GET(request: Request) {
   const paymentIntentId = searchParams.get("paymentIntentId");
 
   const record =
-    (pendingBookingId ? getPendingBooking(pendingBookingId) : null) ??
-    (paymentIntentId ? getPendingBookingByPaymentIntent(paymentIntentId) : null);
+    (pendingBookingId ? await getPendingBooking(pendingBookingId) : null) ??
+    (paymentIntentId ? await getPendingBookingByPaymentIntent(paymentIntentId) : null);
 
   if (!record) {
     return NextResponse.json({ error: "Booking not found." }, { status: 404 });

@@ -12,7 +12,7 @@ export async function fulfillPendingBooking(
   pendingBookingId: string,
   paymentIntent: Stripe.PaymentIntent,
 ): Promise<BookingResult> {
-  const pending = getPendingBooking(pendingBookingId);
+  const pending = await getPendingBooking(pendingBookingId);
   if (!pending) {
     throw new Error(`Pending booking ${pendingBookingId} not found.`);
   }
@@ -27,18 +27,18 @@ export async function fulfillPendingBooking(
 
   verifyPaymentMatchesPending(paymentIntent, pending);
 
-  updatePendingBooking(pendingBookingId, {
+  await updatePendingBooking(pendingBookingId, {
     status: "payment_received",
     paymentIntentId: paymentIntent.id,
   });
 
   if (!isAmadeusConfigured()) {
     const err = "Amadeus API credentials are not configured.";
-    updatePendingBooking(pendingBookingId, { status: "failed", error: err });
+    await updatePendingBooking(pendingBookingId, { status: "failed", error: err });
     throw new Error(err);
   }
 
-  updatePendingBooking(pendingBookingId, { status: "booking" });
+  await updatePendingBooking(pendingBookingId, { status: "booking" });
 
   try {
     const order = await bookAmadeusFlight(pending.pricedOffer, pending.travelers);
@@ -61,11 +61,11 @@ export async function fulfillPendingBooking(
       stripeReceiptUrl,
     };
 
-    updatePendingBooking(pendingBookingId, { status: "completed", result });
+    await updatePendingBooking(pendingBookingId, { status: "completed", result });
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Booking failed.";
-    updatePendingBooking(pendingBookingId, { status: "failed", error: message });
+    await updatePendingBooking(pendingBookingId, { status: "failed", error: message });
     throw err;
   }
 }

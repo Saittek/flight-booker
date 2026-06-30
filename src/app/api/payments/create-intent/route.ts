@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       },
     });
 
-    linkPaymentIntent(body.pendingBookingId, paymentIntent.id);
+    await linkPaymentIntent(body.pendingBookingId, paymentIntent.id);
 
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,
